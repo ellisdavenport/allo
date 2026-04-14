@@ -2,12 +2,10 @@
 Smoke test for allo/generate.py
 
 Run with:
-    python test_generate.py
+    python tests/test_generate.py
 
 Expected output: a list of generated variants grouped by strategy,
-each prefixed with its strategy name. Back-translation requires a
-valid DEEPL_API_KEY in your .env file; if absent those variants
-will be skipped with a warning rather than crashing.
+each prefixed with its strategy name.
 """
 
 from allo.generate import LLMClient, generate_variants

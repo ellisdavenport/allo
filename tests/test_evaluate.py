@@ -2,9 +2,9 @@
 Smoke test for allo/evaluate.py
 
 Run with:
-    python test_evaluate.py
+    python tests/test_evaluate.py
 
-Expected output: a scored, filtered, deduplicated list of variants
+Expected output: a scored, deduplicated list of variants
 with per-variant semantic similarity and perplexity scores, plus
 batch-level summary stats.
 """
@@ -19,7 +19,7 @@ seed = "remind me to call the doctor tomorrow morning"
 print(f"\nSeed: '{seed}'")
 print("─" * 60)
 
-# Generate variants using all three strategies
+# Generate variants using all four strategies
 variants = generate_variants(seed, n_per_strategy=3, client=client, temperature=0.9)
 
 # Score and filter

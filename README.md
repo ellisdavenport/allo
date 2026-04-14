@@ -48,19 +48,18 @@ Every generated variant is scored on two per-variant metrics and one batch-level
 
 **Perplexity** is a fluency proxy computed via GPT-2. The model scores how surprised it is by the variant sequence, where lower perplexity means the text reads more like natural language. Note that perplexity is sensitive to text length, so shorter utterances tend to score higher than longer ones even when equally fluent. Scores are best interpreted relative to other variants of the same seed rather than as absolute thresholds.
 
-**Lexical diversity (TTR)** is a type-token ratio caluclated across the full generated batch: unique word types divided by total word tokens. A score of 1.0 means every word in the batch appeared exactly once, whereas a score close to 0.0 means the batch is clustering around the same vocabulary. Because variants share core vocabulary with the seed by definition, TTR will naturally be moderate even for a well-diversified batch. Best to interpret it relative to other runs rather than against an external baseline.
+**Lexical diversity (TTR)** is a type-token ratio calculated across the full generated batch: unique word types divided by total word tokens. A score of 1.0 means every word in the batch appeared exactly once, whereas a score close to 0.0 means the batch is clustering around the same vocabulary. Because variants share core vocabulary with the seed by definition, TTR will naturally be moderate even for a well-diversified batch. Best to interpret it relative to other runs rather than against an external baseline.
 
 No filtering is applied by default. Scores are presented as-is so the practitioner can apply whatever threshold makes sense for their use case. Optional hard filtering is available via CLI flags and UI controls.
 
 ---
 
-```markdown
 ## Installation
 
 **Requirements:** Python 3.12, pip
 
 ```bash
-git clone https://github.com/yourusername/allo.git
+git clone https://github.com/ellisdavenport/allo.git
 cd allo
 python3.12 -m venv venv
 source venv/bin/activate
@@ -175,7 +174,7 @@ If applying `--filter-min-similarity` with expansion enabled, set your threshold
 
 ## Known limitations
 
-**MLM substitution and short utterances.** MLM yield is bounded by utterance length. With only three maskable positions, and after filtering invalid candidates, even an optimal run may return a small number of variants regardless of --n.. This is a structural ceiling, not a bug. Longer, more lexically rich seeds will produce more MLM variants.
+**MLM substitution and short utterances.** MLM yield is bounded by utterance length. With only three maskable positions, and after filtering invalid candidates, even an optimal run may return a small number of variants regardless of --n. This is a structural ceiling, not a bug. Longer, more lexically rich seeds will produce more MLM variants.
 
 **Constrained rewriting and degenerate seeds.** Some constraints interact poorly with certain seed types. Passive voice, for instance, is difficult to apply to a seed that is already maximally simple (*"lights off"*). The LLM will attempt compliance but may produce variants that are not genuine structural transforms. Semantic similarity and perplexity scores will surface these cases.
 

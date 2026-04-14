@@ -21,7 +21,7 @@ st.set_page_config(
 
 st.title("allo")
 st.markdown(
-    "allo generates natural language utterance variants from a seed utterance using four complementary strategies" \
+    "allo generates natural language utterance variants from a seed utterance using four complementary strategies " \
     "(LLM paraphrasing, constrained syntactic rewriting, contextual MLM substitution, and semantic expansion),"
     "and scores each variant for semantic similarity and fluency." \
     "Results are exported as a scored CSV ready for human review and ingestion into a training pipeline."

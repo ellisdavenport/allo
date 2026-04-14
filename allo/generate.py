@@ -506,7 +506,7 @@ def generate_variants(
     # Strategy 1: LLM paraphrasing
     print(f"Generating LLM paraphrases (n={n_per_strategy}, batched in {_LLM_BATCH_SIZE}s)...")
     for utt in generate_llm_variants(seed, n_per_strategy, client, temperature=temperature):
-        results.append({"utterance": utt, "strategy": "llm"})
+        results.append({"utterance": utt, "strategy": "llm_paraphrase"})
     print(f"  → {sum(1 for r in results if r['strategy'] == 'llm_paraphrase')} variants")
 
     # Strategy 2: Constrained syntactic rewriting
