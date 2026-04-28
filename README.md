@@ -52,6 +52,36 @@ Every generated variant is scored on two per-variant metrics and one batch-level
 
 No filtering is applied by default. Scores are presented as-is so the practitioner can apply whatever threshold makes sense for their use case. Optional hard filtering is available via CLI flags and UI controls.
 
+**Known metric limitations** The scoring metrics in allo have specific weaknesses that users should know about when setting filter thresholds:
+
+- Similarity is sensitive to named entity substitutions. MLM substitution variants that swap a named entity (e.g. "Australia" → "Babylon") can score similarity below 0.1 despite otherwise-identical surface form. This is the metric correctly reporting that meaning has shifted.
+- Similarity can undershoot on synonymy. LLM paraphrases that preserve meaning through substantial vocabulary change (e.g. "play something relaxing" → "select a laid back track") may score low similarity despite being high-quality paraphrases.
+- Perplexity can spike on short, disfluent, or repetitive seeds. GPT-2 scores very short utterances (≤3 words) and utterances with filled pauses (uh, um) disproportionately high even when they're natural English. Users applying `--filter-max-perplexity` aggressively may remove valid variants from these seed types.
+
+See `evaluation/results/scoring_ranges/scoring_ranges.md` for detailed examples and data.
+
+---
+
+## Applying similarity and perplexity filters
+
+Filters are off by default. When enabled, `--filter-min-similarity` discards variants below a similarity score and `--filter-max-perplexity` discards variants above a perplexity score. Both are available as CLI flags and UI controls.
+
+Before setting a threshold, it is worth knowing what it will actually remove. Based on a 117-seed study at `--n=50` (detailed in `evaluation/results/scoring_ranges/scoring_ranges.md`):
+
+**Similarity thresholds by strategy — fraction of variants discarded:**
+
+| threshold | llm_paraphrase | constrained | mlm_substitution | expansion |
+|:---|---:|---:|---:|---:|
+| 0.55 | 4.5% | 1.1% | 5.0% | 28.9% |
+| 0.65 | 11.5% | 3.6% | 11.2% | 51.2% |
+| 0.70 | 17.0% | 6.9% | 16.2% | 63.7% |
+
+A floor of 0.55 with expansion enabled sits between the expansion and paraphrase-class distributions, removing roughly a third of expansion output while preserving 95–99% of paraphrase-class variants. A floor of 0.70 without expansion discards approximately one in six paraphrase-class variants.
+
+**Perplexity thresholds behave differently by seed type.** On clean, medium-to-long seeds, a ceiling of 200–300 removes genuinely awkward output without significant collateral loss. On short seeds (≤4 words) or seeds containing disfluencies such as filled pauses or repeated tokens, perplexity scores are unreliable, and valid variants routinely exceed 10,000 on these seed types. Applying a perplexity ceiling to a batch containing these seeds may likely remove valid output.
+
+**The practical recommendation is to inspect before committing.** Run allo without filters first, sort the output CSV by similarity ascending and perplexity descending, review what falls at your intended threshold, then apply the filter.
+
 ---
 
 ## Installation
@@ -168,8 +198,6 @@ Semantic similarity scores are not directly comparable across strategies because
 
 Perplexity is not strategy-dependent because fluency varies within every strategy. The exception worth noting is MLM substitution, where swapping a single word without adjusting surrounding syntax can produce grammatically odd results that score high perplexity even when the substituted word appears plausible in isolation.
 
-If applying `--filter-min-similarity` with expansion enabled, set your threshold lower than you would for paraphrases only, otherwise you will discard the expansion variants that the strategy is explicitly designed to produce.
-
 ---
 
 ## Known limitations
@@ -196,8 +224,6 @@ If applying `--filter-min-similarity` with expansion enabled, set your threshold
 
 **Packaging as a console script.** Adding a `pyproject.toml` with a console script entry point would enable `allo` as a standalone terminal command rather than `python main.py`, and make the project installable as a proper Python package.
 
-**Systematic testing.** Output volume per strategy and typical similarity ranges per strategy have not yet been benchmarked across a representative sample of seed types. Once completed, this testing will restore the scale table to the usage section and the score range guidance to the interpreting scores and known limitations sections.
-
 ---
 
 ## Project structure
@@ -209,6 +235,11 @@ allo/
 │   ├── generate.py     # generation strategies and LLM abstraction layer
 │   ├── evaluate.py     # scoring: semantic similarity, perplexity, lexical diversity
 │   └── output.py       # CSV writing
+├── evaluation/
+│   ├── allo_seed_set.csv           # 117-seed evaluation corpus
+│   ├── seed_set_methodology.md     # seed set design and schema
+│   ├── studies/                    # runner scripts and analysis notebooks
+│   └── results/                    # committed figures, summaries, and study write-ups
 ├── tests/
 │   ├── test_generate.py
 │   └── test_evaluate.py
