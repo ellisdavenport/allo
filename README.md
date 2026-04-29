@@ -36,7 +36,7 @@ Each strategy produces a structurally different kind of variation. The four are 
 
 **Contextual MLM substitution** generates lexically diverse variants by masking each content word in the seed and collecting DistilBERT's top predictions for that position. Because the model conditions on the full surrounding context, it respects phrasal structure; *turn* in *turn off the lights* yields candidates like *switch*, *flip*, and *shut*, not *rotate* or *bend* as a dictionary lookup would.
 
-**Semantic expansion** generates utterances that are related but meaningfully distinct, such as a different scope, degree, or action within the same domain as the seed. This is what enables scale to hundreds of variants: pure paraphrasing has a natural ceiling because there are only so many ways to say exactly the same thing. Expansion deliberately trades semantic fidelity for coverage breadth, producing neighbors like *dim the lights*, *turn off the bedroom light*, or *kill the lights* from a *turn off the lights* seed. These variants will score lower on semantic similarity than pure paraphrases because they are not paraphrases; they are neighbors. Review them separately before ingesting into training data.
+**Semantic expansion** generates utterances that are related but meaningfully distinct, such as a different scope, degree, or action within the same domain as the seed. Expansion deliberately trades semantic fidelity for coverage breadth, producing neighbors like *dim the lights*, *turn off the bedroom light*, or *close the blinds* from a *turn off the lights* seed. These variants will score lower on semantic similarity than pure paraphrases because they are not paraphrases. Review them separately before ingesting into training data.
 
 ---
 
@@ -52,9 +52,8 @@ Every generated variant is scored on two per-variant metrics and one batch-level
 
 No filtering is applied by default. Scores are presented as-is so the practitioner can apply whatever threshold makes sense for their use case. Optional hard filtering is available via CLI flags and UI controls.
 
-**Known metric limitations** The scoring metrics in allo have specific weaknesses that users should know about when setting filter thresholds:
+**Known metric limitations** The scoring metrics in allo have specific considerations that users should be aware of when setting filter thresholds:
 
-- Similarity is sensitive to named entity substitutions. MLM substitution variants that swap a named entity (e.g. "Australia" → "Babylon") can score similarity below 0.1 despite otherwise-identical surface form. This is the metric correctly reporting that meaning has shifted.
 - Similarity can undershoot on synonymy. LLM paraphrases that preserve meaning through substantial vocabulary change (e.g. "play something relaxing" → "select a laid back track") may score low similarity despite being high-quality paraphrases.
 - Perplexity can spike on short, disfluent, or repetitive seeds. GPT-2 scores very short utterances (≤3 words) and utterances with filled pauses (uh, um) disproportionately high even when they're natural English. Users applying `--filter-max-perplexity` aggressively may remove valid variants from these seed types.
 
@@ -68,7 +67,7 @@ Filters are off by default. When enabled, `--filter-min-similarity` discards var
 
 Before setting a threshold, it is worth knowing what it will actually remove. Based on a 117-seed study at `--n=50` (detailed in `evaluation/results/scoring_ranges/scoring_ranges.md`):
 
-**Similarity thresholds by strategy — fraction of variants discarded:**
+**Similarity thresholds by strategy — percent of variants discarded:**
 
 | threshold | llm_paraphrase | constrained | mlm_substitution | expansion |
 |:---|---:|---:|---:|---:|
@@ -78,7 +77,7 @@ Before setting a threshold, it is worth knowing what it will actually remove. Ba
 
 A floor of 0.55 with expansion enabled sits between the expansion and paraphrase-class distributions, removing roughly a third of expansion output while preserving 95–99% of paraphrase-class variants. A floor of 0.70 without expansion discards approximately one in six paraphrase-class variants.
 
-**Perplexity thresholds behave differently by seed type.** On clean, medium-to-long seeds, a ceiling of 200–300 removes genuinely awkward output without significant collateral loss. On short seeds (≤4 words) or seeds containing disfluencies such as filled pauses or repeated tokens, perplexity scores are unreliable, and valid variants routinely exceed 10,000 on these seed types. Applying a perplexity ceiling to a batch containing these seeds may likely remove valid output.
+**Perplexity thresholds behave differently by seed type.** On clean, medium-to-long seeds, a ceiling of 200–300 removes genuinely awkward output without significant collateral loss. On short seeds (≤4 words) or seeds containing disfluencies such as filled pauses or repeated tokens, perplexity scores are unreliable, and valid variants routinely exceed 10,000 on these seed types. Applying a perplexity ceiling to a batch containing these seeds may remove valid output.
 
 **The practical recommendation is to inspect before committing.** Run allo without filters first, sort the output CSV by similarity ascending and perplexity descending, review what falls at your intended threshold, then apply the filter.
 
@@ -202,7 +201,7 @@ Perplexity is not strategy-dependent because fluency varies within every strateg
 
 ## Known limitations
 
-**MLM substitution and short utterances.** MLM yield is bounded by utterance length. With only three maskable positions, and after filtering invalid candidates, even an optimal run may return a small number of variants regardless of --n. This is a structural ceiling, not a bug. Longer, more lexically rich seeds will produce more MLM variants.
+**MLM substitution and short utterances.** MLM yield is bounded by utterance length. With only three maskable positions, and after filtering invalid candidates, even an optimal run may return a small number of variants regardless of --n. Longer, more lexically rich seeds will produce more MLM variants.
 
 **Constrained rewriting and degenerate seeds.** Some constraints interact poorly with certain seed types. Passive voice, for instance, is difficult to apply to a seed that is already maximally simple (*"lights off"*). The LLM will attempt compliance but may produce variants that are not genuine structural transforms. Semantic similarity and perplexity scores will surface these cases.
 
