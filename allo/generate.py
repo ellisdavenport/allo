@@ -490,16 +490,26 @@ def generate_variants(
         include_expansion — whether to run semantic expansion. Disable if you
                             want strictly synonymous paraphrases only.
 
-    Approximate output at common n_per_strategy values (before dedup/filtering):
-        n=5:   ~5 llm + ~15 constrained + ~15 mlm + ~3 expansion  = ~38
-        n=20:  ~20 llm + ~30 constrained + ~20 mlm + ~10 expansion = ~80
-        n=50:  ~50 llm + ~45 constrained + ~30 mlm + ~25 expansion = ~150
-        n=80:  ~80 llm + ~60 constrained + ~30 mlm + ~40 expansion = ~210
-        n=100: ~100 llm + ~75 constrained + ~30 mlm + ~50 expansion = ~255
+    Measured output at common n_per_strategy values (mean across the 117-seed
+    test set, before deduplication; full study at
+    evaluation/results/volume_sweep/volume_sweep.md):
+        n=5:   ~5 llm   + ~15 constrained + ~5 mlm   + ~5 expansion  = ~30
+        n=10:  ~10 llm  + ~15 constrained + ~10 mlm  + ~5 expansion  = ~40
+        n=20:  ~19 llm  + ~15 constrained + ~20 mlm  + ~5 expansion  = ~58
+        n=50:  ~44 llm  + ~44 constrained + ~45 mlm  + ~12 expansion = ~145
+        n=80:  ~67 llm  + ~44 constrained + ~59 mlm  + ~20 expansion = ~190
+        n=100: ~80 llm  + ~44 constrained + ~65 mlm  + ~25 expansion = ~213
 
-    MLM output is bounded by utterance length × valid candidates per position
-    and does not grow linearly with n_per_strategy beyond ~30. The ceiling
-    is a property of the utterance, not of n.
+    MLM output is bounded by utterance length × valid candidates per position.
+    Measured ceilings: ~48 variants for short seeds (1-4 words), ~75 for medium
+    (5-9 words), effectively unbounded within --n <= 100 for long (10+ words).
+
+    LLM paraphrasing has a content ceiling on short seeds: ~71% efficiency at
+    --n=100 on short seeds vs ~97% on long seeds. The model genuinely cannot
+    produce 100 distinct natural paraphrases of a 3-word utterance.
+
+    Constrained rewriting caps at 3 variants per transform x 15 transforms = 45
+    total when --n >= 50, which is why its column flattens above n=20.
     """
     results = []
 

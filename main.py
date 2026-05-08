@@ -31,10 +31,18 @@ Arguments:
     --filter-min-similarity Optional: discard variants below this similarity score.
     --filter-max-perplexity Optional: discard variants above this perplexity score.
 
-Expected output volumes at common --n values (before dedup and filtering):
-    n=10:  ~10 llm + ~15-30 constrained + ~15 mlm + ~3 expansion  = ~40-60
-    n=50:  ~50 llm + ~45 constrained    + ~30 mlm + ~13 expansion = ~140
-    n=100: ~100 llm + ~75 constrained   + ~30 mlm + ~25 expansion = ~230
+Expected output volumes at common --n values (mean across the 117-seed test set,
+before dedup; measured in evaluation/results/volume_sweep/volume_sweep.md):
+    n=5:   ~5 llm   + ~15 constrained + ~5 mlm   + ~5 expansion  = ~30
+    n=10:  ~10 llm  + ~15 constrained + ~10 mlm  + ~5 expansion  = ~40
+    n=20:  ~19 llm  + ~15 constrained + ~20 mlm  + ~5 expansion  = ~58
+    n=50:  ~44 llm  + ~44 constrained + ~45 mlm  + ~12 expansion = ~145
+    n=80:  ~67 llm  + ~44 constrained + ~59 mlm  + ~20 expansion = ~190
+    n=100: ~80 llm  + ~44 constrained + ~65 mlm  + ~25 expansion = ~213
+
+These are means; per-seed variance is high. Long seeds approach the requested --n
+on llm and mlm strategies; short seeds plateau earlier. See the volume sweep
+writeup for length-gated breakdown.
 """
 
 import argparse
@@ -65,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--n",
         type=int,
         default=10,
-        help="Variants per strategy (default: 10). See module docstring for volume estimates.",
+        help="Variants per strategy (default: 10). See module docstring for measured volume estimates.",
     )
     parser.add_argument(
         "--temperature",

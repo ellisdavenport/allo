@@ -16,6 +16,8 @@ turn off the lights
 
 allo generates natural variants using four complementary strategies, scores each variant for semantic similarity and fluency, and exports the results to a scored CSV ready for human review.
 
+The project includes a systematic evaluation framework with a stratified 117-seed test set, a volume sweep study, and a scoring ranges study. See [Evaluation](#evaluation) below.
+
 ---
 
 ## Why four strategies?
@@ -52,10 +54,13 @@ Every generated variant is scored on two per-variant metrics and one batch-level
 
 No filtering is applied by default. Scores are presented as-is so the practitioner can apply whatever threshold makes sense for their use case. Optional hard filtering is available via CLI flags and UI controls.
 
-**Known metric limitations** The scoring metrics in allo have specific considerations that users should be aware of when setting filter thresholds:
+### Metric limitations
 
-- Similarity can undershoot on synonymy. LLM paraphrases that preserve meaning through substantial vocabulary change (e.g. "play something relaxing" → "select a laid back track") may score low similarity despite being high-quality paraphrases.
-- Perplexity can spike on short, disfluent, or repetitive seeds. GPT-2 scores very short utterances (≤3 words) and utterances with filled pauses (uh, um) disproportionately high even when they're natural English. Users applying `--filter-max-perplexity` aggressively may remove valid variants from these seed types.
+The scoring metrics in allo have specific considerations that users should be aware of when setting filter thresholds:
+
+- **Similarity drops sharply on named entity substitutions.** MLM variants that substitute one named entity for another (e.g. *what's the capital of australia* → *what's the capital of babylon*) score very low similarity because the referent has changed substantially. The metric is correctly reporting meaning change, but users running MLM on seeds with named entities should expect a low-similarity tail and threshold accordingly.
+- **Similarity can undershoot on synonymy.** LLM paraphrases that preserve meaning through substantial vocabulary change (e.g. *play something relaxing* → *select a laid back track*) may score low similarity despite being high-quality paraphrases.
+- **Perplexity can spike on short, disfluent, or repetitive seeds.** GPT-2 scores very short utterances (≤3 words) and utterances with filled pauses (uh, um) disproportionately high even when they're natural English. Users applying `--filter-max-perplexity` aggressively may remove valid variants from these seed types.
 
 See `evaluation/results/scoring_ranges/scoring_ranges.md` for detailed examples and data.
 
@@ -186,28 +191,68 @@ The `strategy` field identifies both the strategy and, for constrained rewrites,
 
 ## Interpreting scores across strategies
 
-Semantic similarity scores are not directly comparable across strategies because the strategies target different parts of the variation space:
+The four strategies target different parts of the variation space, so their similarity and perplexity distributions look different. The table below reports measured medians, IQRs, and p95 values across 16,962 variants from the scoring ranges study (full details in `evaluation/results/scoring_ranges/scoring_ranges.md`):
 
-| Strategy | What low semantic similarity scores mean |
-|---|---|
-| `llm` | Semantic drift |
-| `constrained:*` | Structural transform worked as intended |
-| `mlm` | Substitution changed meaning more than expected |
-| `expansion` | Expected |
+**Semantic similarity:**
+
+| strategy | p25 | median | p75 | p95 |
+|:---|---:|---:|---:|---:|
+| constrained | 0.82 | 0.89 | 0.93 | 0.98 |
+| mlm_substitution | 0.77 | 0.87 | 0.94 | 0.99 |
+| llm_paraphrase | 0.74 | 0.83 | 0.89 | 0.94 |
+| expansion | 0.52 | 0.64 | 0.75 | 0.85 |
+
+The three paraphrase-class strategies (constrained, MLM, LLM) form a tight band with medians between 0.83 and 0.89. Expansion sits well below at 0.64, consistent with its design intent of producing adjacent-intent variants rather than paraphrases.
+
+**Perplexity:**
+
+| strategy | p25 | median | p75 | p95 |
+|:---|---:|---:|---:|---:|
+| constrained | 60 | 99 | 186 | 661 |
+| llm_paraphrase | 68 | 123 | 254 | 911 |
+| mlm_substitution | 89 | 153 | 312 | 1175 |
+| expansion | 86 | 154 | 328 | 1188 |
+
+All four medians fall within GPT-2's typical natural-English band. Constrained rewriting produces the most fluent-scoring output by median; MLM substitution and expansion produce the least.
+
+What a low score means depends on the strategy:
+
+| Strategy | What low semantic similarity means |
+|:---|:---|
+| `llm_paraphrase` | Semantic drift, or deep synonymy that the embedding undershoots |
+| `constrained:*` | The structural transform changed surface form substantially |
+| `mlm_substitution` | The substitution changed meaning more than expected, often via named entity swap |
+| `expansion` | Expected — expansion variants are adjacent intents, not paraphrases |
 
 Perplexity is not strategy-dependent because fluency varies within every strategy. The exception worth noting is MLM substitution, where swapping a single word without adjusting surrounding syntax can produce grammatically odd results that score high perplexity even when the substituted word appears plausible in isolation.
 
 ---
 
-## Known limitations
+## Generation limitations
 
-**MLM substitution and short utterances.** MLM yield is bounded by utterance length. With only three maskable positions, and after filtering invalid candidates, even an optimal run may return a small number of variants regardless of --n. Longer, more lexically rich seeds will produce more MLM variants.
+**MLM substitution and short utterances.** MLM yield is bounded by utterance length × valid candidates per position. The volume sweep study measured ceilings of approximately 48 variants for short seeds (1–4 words), 75 for medium seeds (5–9 words), and effectively unbounded within `--n ≤ 100` for long seeds (10+ words). This is a structural property of the utterance, not a bug. Longer, more lexically rich seeds will produce more MLM variants.
 
-**Constrained rewriting and degenerate seeds.** Some constraints interact poorly with certain seed types. Passive voice, for instance, is difficult to apply to a seed that is already maximally simple (*"lights off"*). The LLM will attempt compliance but may produce variants that are not genuine structural transforms. Semantic similarity and perplexity scores will surface these cases.
+**Constrained rewriting and degenerate seeds.** Some constraints interact poorly with certain seed types. Two transforms in particular show meaningful compliance issues at high `--n`: `polar_question` (75% compliance, with failures concentrated on seeds that are already interrogative) and `abbreviated_spoken` (72% compliance, with failures concentrated on already-short seeds). Passive voice is also difficult to apply to seeds that are already maximally simple (*"lights off"*). Semantic similarity and perplexity scores will surface these cases.
 
 **LLM semantic drift.** At higher temperatures, LLM-generated paraphrases occasionally drift into semantically adjacent territory (e.g. *"dim the lights"* from a *"turn off the lights"* seed). This is not inherently wrong, but it is uncontrolled within the paraphrase strategy. As with other limitations mentioned here, semantic similarity scores will surface it.
 
 **Expansion variant quality.** Semantic expansion is the least constrained strategy. The model is instructed to generate adjacent-intent variants rather than paraphrases, but the boundary is fuzzy and the LLM occasionally produces variants that are either too close (effectively paraphrases) or too far (unrelated utterances). The similarity score is your primary tool for identifying the latter, so make sure to review low-scoring expansion variants carefully before ingesting.
+
+**LLM paraphrase content ceiling on short seeds.** Asking for 100 paraphrases of a 3-word utterance like *"turn it up"* will return roughly 70, not 100. There are only so many ways to say exactly the same short thing. Yield approaches 100% on long seeds and drops to ~71% on short seeds at `--n=100`.
+
+---
+
+## Evaluation
+
+allo includes a systematic evaluation framework. The methodology, runner scripts, analysis notebooks, and committed results all live in `evaluation/`.
+
+**Seed set** — A stratified 117-seed test set spanning 12 domains, 7 syntactic types, 3 register levels, 12 lexical complexity axes, and 4 disfluency types. Seeds were selected to ensure deliberate representation across all dimensions of interest rather than drawn from a convenience sample. Schema, design principles, and known limitations are documented in `evaluation/seed_set_methodology.md`.
+
+**Volume sweep study** (`evaluation/results/volume_sweep/volume_sweep.md`) — Per-strategy output volume measured across six values of `--n` (5, 10, 20, 50, 80, 100) on all 117 seeds, producing 2,808 `(seed, n, strategy)` observations. Findings: a length-gated mechanical ceiling for MLM substitution (~48 variants on short seeds, ~75 on medium, unbounded within `--n ≤ 100` on long); a content ceiling for LLM paraphrasing on short seeds (~71% efficiency at `--n=100`); structural compliance issues for the `polar_question` and `abbreviated_spoken` constrained transforms.
+
+**Scoring ranges study** (`evaluation/results/scoring_ranges/scoring_ranges.md`) — Per-strategy similarity and perplexity distributions measured across 16,962 variants at `--n=50`. Findings: clean modal separation between paraphrase-class strategies and expansion in similarity space; length-sensitivity in both metrics that disproportionately affects short seeds when filters are applied flatly; three documented metric limitations (named entity sensitivity in similarity, synonymy gaps in similarity, perplexity pathology on short disfluent seeds).
+
+Each study includes a runner script in `evaluation/studies/`, an analysis notebook that produces all figures and summary tables, and a markdown writeup committed under `evaluation/results/`.
 
 ---
 
