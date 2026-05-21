@@ -14,8 +14,8 @@ four constrained-rewriting transforms based on judge-surfaced failure modes
 **Headline findings:**
 
 1. **Judge and surface metrics measure largely different things.** Spearman
-   correlation between semantic similarity and judge equivalence is +0.224
-   overall; between log perplexity and judge naturalness, −0.121. Surface
+   correlation between semantic similarity and judge equivalence is +0.188
+   overall; between log perplexity and judge naturalness, −0.120. Surface
    metrics surface what they measure (vector closeness, GPT-2 unsurprisingness)
    and the judge surfaces what it was asked to measure (intent equivalence,
    standalone fluency). These targets only partially overlap.
@@ -279,25 +279,25 @@ complement.
 
 ### Overall Spearman correlations (n=16,959)
 
-- **Similarity vs judge equivalence:** +0.224
-- **Log perplexity vs judge naturalness:** −0.121
+- **Similarity vs judge equivalence:** +0.188
+- **Log perplexity vs judge naturalness:** −0.120
 
 Both correlations are in the expected direction but small in magnitude.
-A Spearman of +0.224 means similarity and judge equivalence share a weak
+A Spearman of +0.188 means similarity and judge equivalence share a weak
 monotonic relationship but explain very little of each other's variance.
 
 ### Per-strategy Spearman correlations
 
 | Strategy | sim ↔ judge_equiv | log(ppl) ↔ judge_natural |
 |:---|---:|---:|
-| llm_paraphrase | +0.296 | −0.062 |
-| constrained | +0.292 | −0.101 |
-| mlm_substitution | +0.404 | −0.217 |
-| expansion | +0.145 | −0.100 |
+| llm_paraphrase | +0.212 | −0.072 |
+| constrained | +0.242 | −0.106 |
+| mlm_substitution | +0.389 | −0.198 |
+| expansion | +0.127 | −0.096 |
 
 The per-strategy view reveals texture the overall number obscures:
 
-- **MLM has the strongest sim↔equiv correlation (+0.404),** which is
+- **MLM has the strongest sim↔equiv correlation (+0.389),** which is
   surprising at first glance but makes sense on reflection. Within the MLM
   variant set, similarity does meaningfully track equivalence — variants
   with very high similarity (above ~0.95) tend to be substitutions where
@@ -309,7 +309,7 @@ The per-strategy view reveals texture the overall number obscures:
   surface "looks good" region while being judged "doesn't match" by the
   judge.
 
-- **Expansion has the weakest sim↔equiv correlation (+0.145),** which
+- **Expansion has the weakest sim↔equiv correlation (+0.127),** which
   reflects that within expansion variants, similarity simply doesn't
   predict whether the judge will call a variant equivalent or not.
   Expansion variants vary in similarity but the judge rates most of them
