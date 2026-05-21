@@ -252,6 +252,8 @@ allo includes a systematic evaluation framework. The methodology, runner scripts
 
 **Scoring ranges study** (`evaluation/results/scoring_ranges/scoring_ranges.md`) — Per-strategy similarity and perplexity distributions measured across 16,962 variants at `--n=50`. Findings: clean modal separation between paraphrase-class strategies and expansion in similarity space; length-sensitivity in both metrics that disproportionately affects short seeds when filters are applied flatly; three documented metric limitations (named entity sensitivity in similarity, synonymy gaps in similarity, perplexity pathology on short disfluent seeds).
 
+**LLM-as-judge evaluation** (`evaluation/results/llm_judge/llm_judge.md`) — Claude Haiku 4.5 with a locked rubric scores all ~17K variants on semantic equivalence and naturalness. Quantifies surface-metric blind spots and identifies MLM substitution as having a structural equivalence problem invisible to similarity scores. The prompt-engineering arm (prompt_revisions.md) revised four constrained-rewriting transforms based on judge-surfaced failure modes.
+
 Each study includes a runner script in `evaluation/studies/`, an analysis notebook that produces all figures and summary tables, and a markdown writeup committed under `evaluation/results/`.
 
 ---
