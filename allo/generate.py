@@ -42,6 +42,17 @@ nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
 
 
+# Version marker for the constrained rewriting prompt set.
+# Bumped when SYNTACTIC_CONSTRAINTS instruction strings change so downstream
+# analysis can identify which prompt set produced any given variant.
+#
+# v1.0: original 15 transforms
+# v1.1: revised negative_framing, modal_should, passive_voice, time_framed
+#       after Day 4 diagnostic findings. Added TRANSFORM_NOT_APPLICABLE
+#       sentinel for LLM-side applicability gating.
+CONSTRAINT_VERSION = "v1.1"
+
+
 # ─────────────────────────────────────────────
 # MODEL LOADING
 # ─────────────────────────────────────────────
@@ -163,6 +174,11 @@ def generate_llm_variants(
 # STRATEGY 2: CONSTRAINED SYNTACTIC REWRITING
 # ─────────────────────────────────────────────
 
+# Sentinel string the LLM is instructed to return when a transform doesn't
+# apply to a given seed. Filtered out before variants are recorded.
+TRANSFORM_NOT_APPLICABLE_SENTINEL = "TRANSFORM_NOT_APPLICABLE"
+
+
 # Each entry defines a structural transform by name and a prompt instruction.
 # The LLM is asked to follow the instruction exactly, at low temperature,
 # which focuses it on structural compliance rather than lexical creativity.
@@ -171,6 +187,11 @@ def generate_llm_variants(
 # illocutionary force (imperative → question → indirect request),
 # modality (can/could/would/should), politeness register, temporal framing,
 # and aspectual variation.
+#
+# Four transforms (negative_framing, modal_should, passive_voice, time_framed)
+# were revised in v1.1 after Day 4 LLM-as-judge diagnostic identified specific
+# linguistic failure modes. These four include TRANSFORM_NOT_APPLICABLE
+# guardrails for seed types they don't compose with.
 
 SYNTACTIC_CONSTRAINTS = [
     {
@@ -199,15 +220,57 @@ SYNTACTIC_CONSTRAINTS = [
     },
     {
         "name": "modal_should",
-        "instruction": "Rewrite using 'should' — as in 'the lights should be turned off'",
+        # Revised in v1.1 to preserve speech act.
+        # Day 4 diagnostic: 79% failure rate on wh-questions because the
+        # original instruction converted questions to statements.
+        "instruction": (
+            "Rewrite using 'should' as the main modal verb while preserving "
+            "the utterance's speech act. If the utterance is a question, the "
+            "variant must remain a question (e.g. 'what's the temperature set "
+            "to' → 'what should the temperature be set to'). If the utterance "
+            "is an imperative, express what should happen (e.g. 'turn off the "
+            "lights' → 'the lights should be turned off'). Do not convert "
+            "questions into declarative statements."
+        ),
     },
     {
         "name": "passive_voice",
-        "instruction": "Rewrite in passive voice (e.g. 'have the lights turned off', 'get the lights switched off')",
+        # Revised in v1.1 to handle verbs without idiomatic passives.
+        # Day 4 diagnostic: 36% naturalness failure rate, predominantly
+        # "be gotten" type ungrammatical passives.
+        "instruction": (
+            "Rewrite in passive voice using a natural English passive "
+            "construction. Prefer 'have X done', 'get X done', or standard "
+            "'be X-ed' depending on which sounds most idiomatic in context. "
+            "If the utterance's main verb resists passive voice in modern "
+            "English — particularly 'get' used as a main verb (as in 'how "
+            "hot is it going to get'), 'have' in its possessive sense, or "
+            "modal verbs — return the literal string TRANSFORM_NOT_APPLICABLE "
+            "on its own line. Do not produce constructions like 'be gotten', "
+            "'be had', or 'be should'."
+        ),
     },
     {
         "name": "negative_framing",
-        "instruction": "Rewrite using a negation that expresses the same intent (e.g. 'make sure the lights aren't left on', 'don't leave the lights on')",
+        # Revised in v1.1 to prevent meaning inversion.
+        # Day 4 diagnostic: 43.8% equivalence failure rate, with 93% failure
+        # on wh-questions because the transform doesn't compose with
+        # non-imperative speech acts.
+        "instruction": (
+            "Rewrite the utterance using a negation that preserves its "
+            "actionable intent — the variant must request the same outcome "
+            "as the utterance, not the opposite. For example: 'turn off the "
+            "lights' → 'don't leave the lights on'; 'remind me to call the "
+            "doctor' → 'don't let me forget to call the doctor'. This "
+            "transform applies when the utterance expresses an action the "
+            "addressee should take or avoid. It does not apply to utterances "
+            "that ask for information (\"what's the temperature\"), describe "
+            "states without requesting action (\"i'd like the thermostat at "
+            "68\"), are already negated (\"don't send that email yet\"), or "
+            "are too fragmentary to negate coherently (\"lights off\"). When "
+            "the transform doesn't apply, return the literal string "
+            "TRANSFORM_NOT_APPLICABLE on its own line."
+        ),
     },
     {
         "name": "progressive_desire",
@@ -215,7 +278,23 @@ SYNTACTIC_CONSTRAINTS = [
     },
     {
         "name": "time_framed",
-        "instruction": "Add a specific temporal context that situates when the action should happen (e.g. 'for the night', 'before I leave', 'right now', 'once you're done')",
+        # Revised in v1.1 to require semantic compatibility with temporal context.
+        # Day 4 diagnostic: 39% failure rate on wh-questions due to adding
+        # temporal context to atemporal facts ("capital of australia for the night").
+        "instruction": (
+            "Add a specific temporal context that situates when an action, "
+            "request, or state should occur. For example: 'turn off the "
+            "lights' → 'turn off the lights before I leave'; 'remind me to "
+            "take my medication' → 'remind me to take my medication right "
+            "after breakfast'. This transform applies when the utterance "
+            "describes something that varies over time. It does not apply to "
+            "factual queries about static information — geographic facts, "
+            "historical events, biographical facts, or other atemporal "
+            "content. For example, adding 'for the night' to 'what's the "
+            "capital of australia' produces nonsense because capitals don't "
+            "vary by time of day. When the transform doesn't apply, return "
+            "the literal string TRANSFORM_NOT_APPLICABLE on its own line."
+        ),
     },
     {
         "name": "reason_added",
@@ -241,6 +320,7 @@ def generate_constrained_variants(
     n_per_constraint: int,
     client: LLMClient,
     temperature: float = 0.4,
+    constraints: list[dict] = None,
 ) -> list[dict]:
     """
     Apply each syntactic constraint to the seed and collect the results.
@@ -255,11 +335,24 @@ def generate_constrained_variants(
     structural variants total. At n_per_constraint=2-3 the model produces
     alternative realizations of the same structural pattern.
 
+    constraints (optional) lets the caller pass a subset of SYNTACTIC_CONSTRAINTS
+    to run rather than all 15. Used by the prompt-revision validation runner
+    in evaluation/studies/prompt_revisions.py to evaluate only the four
+    transforms revised in v1.1. If None, runs all SYNTACTIC_CONSTRAINTS.
+
+    Variants returned as TRANSFORM_NOT_APPLICABLE (the sentinel returned by
+    revised v1.1 transforms when they judge the seed unsuitable) are filtered
+    out before recording. This means (seed, transform) pairs the LLM judges
+    inapplicable produce zero variants rather than off-task output.
+
     Returns a list of dicts with 'utterance' and 'constraint' keys so
     generate_variants() can tag each result with its specific transform.
     """
+    if constraints is None:
+        constraints = SYNTACTIC_CONSTRAINTS
+
     results = []
-    for constraint in SYNTACTIC_CONSTRAINTS:
+    for constraint in constraints:
         count_phrase = (
             f"{n_per_constraint} versions"
             if n_per_constraint > 1
@@ -275,6 +368,12 @@ def generate_constrained_variants(
         try:
             raw = client.generate(prompt, temperature=temperature)
             lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            # Filter sentinel — TRANSFORM_NOT_APPLICABLE indicates the LLM
+            # judged this constraint inapplicable to this seed. Strict
+            # exact-match check; edge-case variations on the sentinel
+            # (e.g. lowercase, trailing punctuation) pass through as
+            # variants and will surface as low-quality output downstream.
+            lines = [l for l in lines if l != TRANSFORM_NOT_APPLICABLE_SENTINEL]
             for line in lines[:n_per_constraint]:
                 results.append({"utterance": line, "constraint": constraint["name"]})
         except Exception as e:
@@ -501,15 +600,22 @@ def generate_variants(
         n=100: ~80 llm  + ~44 constrained + ~65 mlm  + ~25 expansion = ~213
 
     MLM output is bounded by utterance length × valid candidates per position.
-    Measured ceilings: ~48 variants for short seeds (1-4 words), ~75 for medium
-    (5-9 words), effectively unbounded within --n <= 100 for long (10+ words).
+    Measured ceilings: ~48 variants for short seeds (1-4 words), ~75 for
+    medium (5-9 words), effectively unbounded within --n <= 100 for long
+    (10+ words).
 
-    LLM paraphrasing has a content ceiling on short seeds: ~71% efficiency at
-    --n=100 on short seeds vs ~97% on long seeds. The model genuinely cannot
-    produce 100 distinct natural paraphrases of a 3-word utterance.
+    LLM paraphrasing has a content ceiling on short seeds: ~71% efficiency
+    at --n=100 on short seeds vs ~97% on long seeds.
 
-    Constrained rewriting caps at 3 variants per transform x 15 transforms = 45
-    total when --n >= 50, which is why its column flattens above n=20.
+    Constrained rewriting caps at 3 variants per transform x 15 transforms
+    = 45 total when --n >= 50.
+
+    Note: in CONSTRAINT_VERSION v1.1, four transforms (negative_framing,
+    modal_should, passive_voice, time_framed) include applicability gating
+    via the TRANSFORM_NOT_APPLICABLE sentinel. Total constrained output
+    for v1.1 may be lower than v1.0 because these four transforms now
+    correctly skip on incompatible seed types instead of producing
+    drift-laden variants.
     """
     results = []
 

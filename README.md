@@ -36,6 +36,8 @@ Each strategy produces a structurally different kind of variation. The four are 
 
 *Pragmatic and contextual variation* — time framed, reason added, abbreviated spoken, emphatic, confirmation seeking
 
+Four of the fifteen transforms (`negative_framing`, `modal_should`, `passive_voice`, `time_framed`) were revised in v1.1 to add applicability gating and address linguistic failure modes identified by the LLM-as-judge diagnostic. See `prompt_revisions.md`.
+
 **Contextual MLM substitution** generates lexically diverse variants by masking each content word in the seed and collecting DistilBERT's top predictions for that position. Because the model conditions on the full surrounding context, it respects phrasal structure; *turn* in *turn off the lights* yields candidates like *switch*, *flip*, and *shut*, not *rotate* or *bend* as a dictionary lookup would.
 
 **Semantic expansion** generates utterances that are related but meaningfully distinct, such as a different scope, degree, or action within the same domain as the seed. Expansion deliberately trades semantic fidelity for coverage breadth, producing neighbors like *dim the lights*, *turn off the bedroom light*, or *close the blinds* from a *turn off the lights* seed. These variants will score lower on semantic similarity than pure paraphrases because they are not paraphrases. Review them separately before ingesting into training data.
@@ -231,6 +233,8 @@ Perplexity is not strategy-dependent because fluency varies within every strateg
 ## Generation limitations
 
 **MLM substitution and short utterances.** MLM yield is bounded by utterance length × valid candidates per position. The volume sweep study measured ceilings of approximately 48 variants for short seeds (1–4 words), 75 for medium seeds (5–9 words), and effectively unbounded within `--n ≤ 100` for long seeds (10+ words). This is a structural property of the utterance, not a bug. Longer, more lexically rich seeds will produce more MLM variants.
+
+**MLM substitution and semantic drift.** The LLM-as-judge evaluation found that 75% of MLM variants have judge-rated equivalence ≤2 despite a median semantic similarity of 0.87. Single-word DistilBERT substitutions are grammatically natural but frequently change meaning. Practitioners using MLM output should not rely on semantic similarity alone as a quality gate; either inspect MLM variants manually before ingestion or filter on a third quality signal. See `evaluation/results/llm_judge/llm_judge.md` for the full analysis.
 
 **Constrained rewriting and degenerate seeds.** Some constraints interact poorly with certain seed types. Two transforms in particular show meaningful compliance issues at high `--n`: `polar_question` (75% compliance, with failures concentrated on seeds that are already interrogative) and `abbreviated_spoken` (72% compliance, with failures concentrated on already-short seeds). Passive voice is also difficult to apply to seeds that are already maximally simple (*"lights off"*). Semantic similarity and perplexity scores will surface these cases.
 
