@@ -462,10 +462,8 @@ In rough order of value relative to effort:
    substantially strengthen the calibration claim and provide a real
    ground truth for evaluating the judge's biases.
 
-2. **MLM strategy-level redesign.** Choose one of the three paths from
-   the implications section and prototype it. The post-hoc judge filtering
-   option is the cheapest to test; the restrict-by-confidence option is
-   the most architecturally aligned with allo's existing design.
+2. **MLM strategy-level redesign.** Implement the confidence-gated generation path (option 1 in the implications section):
+    restrict MLM     substitution to positions where DistilBERT's top prediction has high confidence and the top-5 candidates form a coherent synonym set. Validate with the judge against the v1.0 MLM baseline using pre-registered success criteria (targeted equivalence improvement, naturalness non-degradation, retained variant volume above a floor). 
 
 3. **Inter-judge agreement.** Run the calibration set through one or two
    additional judge models (e.g., a smaller Anthropic model and a non-Anthropic

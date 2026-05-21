@@ -266,6 +266,8 @@ Each study includes a runner script in `evaluation/studies/`, an analysis notebo
 
 **Parallel LLM calls.** The constrained rewriting strategy makes one API call per constraint sequentially, at 15 calls per run. Parallelizing these with `concurrent.futures` would give a significant latency reduction at larger `--n` values.
 
+**MLM strategy redesign with confidence-gated generation.** The LLM-as-judge evaluation found that MLM substitution has a 75% equivalence failure rate despite high surface similarity (see evaluation/results/llm_judge/llm_judge.md). A planned redesign restricts MLM at generation time to positions where DistilBERT's top prediction has high confidence and the top-5 candidates form a coherent synonym set, addressing the failure mode upstream rather than via downstream filtering. Tracked as a separate study.
+
 **Constraint customisation.** The 15 syntactic constraints in `SYNTACTIC_CONSTRAINTS` are hardcoded in `generate.py`. Exposing these as a configurable list via a YAML file or UI editor would let practitioners add domain-specific transforms (e.g. always generate a voice-assistant wake-word prefix variant) without touching source code.
 
 **Expansion clustering.** At large scale, expansion output benefits from post-hoc clustering to identify which adjacent intents are well-represented and which are sparse. Adding a clustering step to the summary would help practitioners identify coverage gaps in the generated batch before ingestion.
