@@ -31,6 +31,7 @@ Four strategies, designed to complement rather than duplicate each other:
 import os
 import re
 import random
+from concurrent.futures import ThreadPoolExecutor
 import nltk
 from dotenv import load_dotenv
 from transformers import pipeline as hf_pipeline
@@ -132,6 +133,12 @@ class LLMClient:
 # the same temperature produce genuine diversity because each call samples
 # fresh from the model's distribution.
 _LLM_BATCH_SIZE = 10
+
+# Thread pool size for constrained rewriting. The 15 constraint calls are
+# independent and I/O-bound, so they run concurrently. 8 keeps a full run
+# to two round-trips while staying well under typical per-minute rate
+# limits on both providers.
+_CONSTRAINT_WORKERS = 8
 
 
 def generate_llm_variants(
@@ -345,14 +352,19 @@ def generate_constrained_variants(
     out before recording. This means (seed, transform) pairs the LLM judges
     inapplicable produce zero variants rather than off-task output.
 
+    Constraints are dispatched concurrently via a thread pool. Each
+    constraint is an independent, I/O-bound API call, so threads give a
+    near-linear latency reduction without any CPU parallelism. executor.map
+    preserves the order of the constraints list, so output ordering is
+    deterministic regardless of which call returns first.
+
     Returns a list of dicts with 'utterance' and 'constraint' keys so
     generate_variants() can tag each result with its specific transform.
     """
     if constraints is None:
         constraints = SYNTACTIC_CONSTRAINTS
 
-    results = []
-    for constraint in constraints:
+    def _rewrite(constraint: dict) -> list[dict]:
         count_phrase = (
             f"{n_per_constraint} versions"
             if n_per_constraint > 1
@@ -374,12 +386,20 @@ def generate_constrained_variants(
             # (e.g. lowercase, trailing punctuation) pass through as
             # variants and will surface as low-quality output downstream.
             lines = [l for l in lines if l != TRANSFORM_NOT_APPLICABLE_SENTINEL]
-            for line in lines[:n_per_constraint]:
-                results.append({"utterance": line, "constraint": constraint["name"]})
+            return [
+                {"utterance": line, "constraint": constraint["name"]}
+                for line in lines[:n_per_constraint]
+            ]
         except Exception as e:
+            # Return an empty list rather than raising so one failed call
+            # doesn't take down the whole batch.
             print(f"  Constrained rewriting failed for '{constraint['name']}': {e}")
+            return []
 
-    return results
+    with ThreadPoolExecutor(max_workers=_CONSTRAINT_WORKERS) as pool:
+        batches = list(pool.map(_rewrite, constraints))
+
+    return [item for batch in batches for item in batch]
 
 
 # ─────────────────────────────────────────────
